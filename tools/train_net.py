@@ -16,6 +16,9 @@ this file as an example of how to use the library.
 You may want to write your own script with your datasets and other customizations.
 """
 
+import sys
+sys.path.append('.\\')
+
 import logging
 import os
 from collections import OrderedDict

@@ -5,7 +5,8 @@ A script to benchmark builtin models.
 
 Note: this script has an extra dependency of psutil.
 """
-
+import sys
+sys.path.append('.\\')
 import itertools
 import logging
 import psutil
