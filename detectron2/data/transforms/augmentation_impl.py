@@ -37,6 +37,7 @@ __all__ = [
     "ResizeScale",
     "ResizeShortestEdge",
     "RandomCrop_CategoryAreaConstraint",
+    "RandomResize",
 ]
 
 
@@ -307,12 +308,19 @@ class FixedSizeCrop(Augmentation):
     it returns the smaller image.
     """
 
-    def __init__(self, crop_size: Tuple[int], pad: bool = True, pad_value: float = 128.0):
+    def __init__(
+        self,
+        crop_size: Tuple[int],
+        pad: bool = True,
+        pad_value: float = 128.0,
+        seg_pad_value: int = 255,
+    ):
         """
         Args:
             crop_size: target image (height, width).
             pad: if True, will pad images smaller than `crop_size` up to `crop_size`
-            pad_value: the padding value.
+            pad_value: the padding value to the image.
+            seg_pad_value: the padding value to the segmentation mask.
         """
         super().__init__()
         self._init(locals())
@@ -341,7 +349,14 @@ class FixedSizeCrop(Augmentation):
         pad_size = np.maximum(pad_size, 0)
         original_size = np.minimum(input_size, output_size)
         return PadTransform(
-            0, 0, pad_size[1], pad_size[0], original_size[1], original_size[0], self.pad_value
+            0,
+            0,
+            pad_size[1],
+            pad_size[0],
+            original_size[1],
+            original_size[0],
+            self.pad_value,
+            self.seg_pad_value,
         )
 
     def get_transform(self, image: np.ndarray) -> TransformList:
@@ -612,3 +627,21 @@ class RandomLighting(Augmentation):
         return BlendTransform(
             src_image=self.eigen_vecs.dot(weights * self.eigen_vals), src_weight=1.0, dst_weight=1.0
         )
+
+
+class RandomResize(Augmentation):
+    """Randomly resize image to a target size in shape_list"""
+
+    def __init__(self, shape_list, interp=Image.BILINEAR):
+        """
+        Args:
+            shape_list: a list of shapes in (h, w)
+            interp: PIL interpolation method
+        """
+        self.shape_list = shape_list
+        self._init(locals())
+
+    def get_transform(self, image):
+        shape_idx = np.random.randint(low=0, high=len(self.shape_list))
+        h, w = self.shape_list[shape_idx]
+        return ResizeTransform(image.shape[0], image.shape[1], h, w, self.interp)

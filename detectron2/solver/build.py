@@ -6,9 +6,14 @@ from collections import defaultdict
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Type, Union
 import torch
-from fvcore.common.param_scheduler import CosineParamScheduler, MultiStepParamScheduler
+from fvcore.common.param_scheduler import (
+    CosineParamScheduler,
+    MultiStepParamScheduler,
+    StepWithFixedGammaParamScheduler,
+)
 
 from detectron2.config import CfgNode
+from detectron2.utils.env import TORCH_VERSION
 
 from .lr_scheduler import LRMultiplier, WarmupParamScheduler
 
@@ -122,13 +127,16 @@ def build_optimizer(cfg: CfgNode, model: torch.nn.Module) -> torch.optim.Optimiz
         bias_lr_factor=cfg.SOLVER.BIAS_LR_FACTOR,
         weight_decay_bias=cfg.SOLVER.WEIGHT_DECAY_BIAS,
     )
-    return maybe_add_gradient_clipping(cfg, torch.optim.SGD)(
-        params,
-        lr=cfg.SOLVER.BASE_LR,
-        momentum=cfg.SOLVER.MOMENTUM,
-        nesterov=cfg.SOLVER.NESTEROV,
-        weight_decay=cfg.SOLVER.WEIGHT_DECAY,
-    )
+    sgd_args = {
+        "params": params,
+        "lr": cfg.SOLVER.BASE_LR,
+        "momentum": cfg.SOLVER.MOMENTUM,
+        "nesterov": cfg.SOLVER.NESTEROV,
+        "weight_decay": cfg.SOLVER.WEIGHT_DECAY,
+    }
+    if TORCH_VERSION >= (1, 12):
+        sgd_args["foreach"] = True
+    return maybe_add_gradient_clipping(cfg, torch.optim.SGD(**sgd_args))
 
 
 def get_default_optimizer_params(
@@ -284,6 +292,13 @@ def build_lr_scheduler(
         end_value = cfg.SOLVER.BASE_LR_END / cfg.SOLVER.BASE_LR
         assert end_value >= 0.0 and end_value <= 1.0, end_value
         sched = CosineParamScheduler(1, end_value)
+    elif name == "WarmupStepWithFixedGammaLR":
+        sched = StepWithFixedGammaParamScheduler(
+            base_value=1.0,
+            gamma=cfg.SOLVER.GAMMA,
+            num_decays=cfg.SOLVER.NUM_DECAYS,
+            num_updates=cfg.SOLVER.MAX_ITER,
+        )
     else:
         raise ValueError("Unknown LR scheduler: {}".format(name))
 
@@ -292,5 +307,6 @@ def build_lr_scheduler(
         cfg.SOLVER.WARMUP_FACTOR,
         min(cfg.SOLVER.WARMUP_ITERS / cfg.SOLVER.MAX_ITER, 1.0),
         cfg.SOLVER.WARMUP_METHOD,
+        cfg.SOLVER.RESCALE_INTERVAL,
     )
     return LRMultiplier(optimizer, multiplier=sched, max_iter=cfg.SOLVER.MAX_ITER)
